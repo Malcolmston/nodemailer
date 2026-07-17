@@ -59,9 +59,12 @@
 //		Send(from string, to []string, raw []byte) error
 //	}
 //
-// SMTPTransport speaks SMTP via net/smtp with optional PLAIN authentication and
-// either implicit TLS or STARTTLS. MemoryTransport captures messages in memory
-// for tests, and JSONTransport records a JSON serialisation of each message.
+// SMTPTransport speaks SMTP via net/smtp with PLAIN or OAuth2 (XOAUTH2)
+// authentication and either implicit TLS or STARTTLS. It can verify a server
+// (dial + EHLO + optional auth, no send) and request RFC 3461 delivery status
+// notifications. Pool wraps it as a bounded, reusable connection pool.
+// SendmailTransport pipes to a local sendmail binary, while MemoryTransport and
+// JSONTransport capture messages for tests.
 //
 // A Transporter ties a Message to a Transport:
 //
@@ -69,6 +72,14 @@
 //	info, err := tr.SendMail(msg)
 //
 // SendMail builds the MIME bytes, derives the SMTP envelope (sender plus the
-// combined To/Cc/Bcc recipient list) and returns Info containing the
-// Message-ID, envelope and raw bytes.
+// combined To/Cc/Bcc recipient list and any address groups) and returns Info
+// containing the Message-ID, envelope and raw bytes.
+//
+// # Additional features
+//
+// The library also supports DKIM signing (RSA-SHA256 with relaxed or simple
+// canonicalization via the DKIM type), named address groups, List-* headers,
+// message priority, In-Reply-To/References threading, extra body alternatives
+// and text/calendar (iCal) events, and loading attachments from a file path, an
+// io.Reader or a URL with content-type sniffing.
 package nodemailer

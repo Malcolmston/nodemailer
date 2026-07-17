@@ -39,12 +39,44 @@ type Message struct {
 	Bcc     []Address
 	ReplyTo []Address
 
+	// ToGroups and CcGroups hold named RFC 5322 address groups rendered in the
+	// To and Cc headers respectively, in addition to the flat To/Cc slices.
+	ToGroups []AddressGroup
+	CcGroups []AddressGroup
+
 	Subject string
 	Text    string
 	HTML    string
 
+	// Alternatives holds additional body parts (beyond Text and HTML) to place
+	// in the multipart/alternative container, such as an amp/html or watch-html
+	// body. They are ordered from least to most preferred.
+	Alternatives []Alternative
+
+	// ICalEvent, when set, adds a text/calendar alternative body carrying a
+	// calendar invitation.
+	ICalEvent *ICalEvent
+
 	// Headers holds additional custom headers in insertion order.
 	Headers []Header
+
+	// InReplyTo is the Message-ID (without angle brackets) this message replies
+	// to. It populates the In-Reply-To header.
+	InReplyTo string
+	// References lists prior Message-IDs (without angle brackets) forming the
+	// thread's References header.
+	References []string
+
+	// Priority sets the message priority, populating X-Priority, X-MSMail-Priority
+	// and Importance headers. The zero value leaves them unset.
+	Priority Priority
+
+	// ListHeaders holds RFC 2369 / RFC 8058 List-* headers (List-Unsubscribe,
+	// List-ID, ...) in insertion order.
+	ListHeaders []Header
+
+	// DKIM, when set, signs the built message with a DKIM-Signature header.
+	DKIM *DKIM
 
 	// Date is the message Date header. If zero, the current time is used at
 	// Build time; set it explicitly for deterministic output.
@@ -174,10 +206,16 @@ func (m *Message) Embed(contentID, filename, contentType string, content []byte)
 // Err returns the first error recorded by a fluent setter, if any.
 func (m *Message) Err() error { return m.err }
 
-// Recipients returns all envelope recipients (To, Cc and Bcc) as addr-specs.
+// Recipients returns all envelope recipients (To, Cc, Bcc and any named
+// address groups) as addr-specs.
 func (m *Message) Recipients() []string {
 	var out []string
-	for _, group := range [][]Address{m.To, m.Cc, m.Bcc} {
+	groups := [][]Address{
+		m.To, groupAddresses(m.ToGroups),
+		m.Cc, groupAddresses(m.CcGroups),
+		m.Bcc,
+	}
+	for _, group := range groups {
 		for _, a := range group {
 			out = append(out, a.Address)
 		}

@@ -36,10 +36,12 @@ func (m *Message) Build() ([]byte, error) {
 	if err := m.From.Validate(); err != nil {
 		return nil, fmt.Errorf("nodemailer: From: %w", err)
 	}
-	if len(m.To) == 0 && len(m.Cc) == 0 && len(m.Bcc) == 0 {
+	if len(m.To) == 0 && len(m.Cc) == 0 && len(m.Bcc) == 0 &&
+		len(m.ToGroups) == 0 && len(m.CcGroups) == 0 {
 		return nil, errors.New("nodemailer: message has no recipients")
 	}
-	if m.Text == "" && m.HTML == "" && len(m.Attachments) == 0 {
+	if m.Text == "" && m.HTML == "" && len(m.Attachments) == 0 &&
+		len(m.Alternatives) == 0 && m.ICalEvent == nil {
 		return nil, errors.New("nodemailer: message has no content")
 	}
 
@@ -62,7 +64,18 @@ func (m *Message) Build() ([]byte, error) {
 	m.writeTopHeaders(&buf, root)
 	buf.WriteString(crlf)
 	renderPartBody(&buf, root)
-	return buf.Bytes(), nil
+	out := buf.Bytes()
+
+	// DKIM signing: sign the finished message and prepend the DKIM-Signature
+	// header so it precedes the fields it covers.
+	if m.DKIM != nil {
+		sig, err := m.DKIM.Sign(out)
+		if err != nil {
+			return nil, err
+		}
+		out = append([]byte(sig+crlf), out...)
+	}
+	return out, nil
 }
 
 // buildRoot assembles the MIME tree for the message body and attachments.
@@ -107,7 +120,8 @@ func (m *Message) buildRoot(bs *boundarySeq) (*mimePart, error) {
 }
 
 // buildBody builds the text/html portion: a single leaf, or a
-// multipart/alternative when both text and HTML are present.
+// multipart/alternative when several body representations are present (plain
+// text, HTML, additional alternatives and any calendar event).
 func (m *Message) buildBody(bs *boundarySeq) *mimePart {
 	var parts []*mimePart
 	if m.Text != "" {
@@ -115,6 +129,12 @@ func (m *Message) buildBody(bs *boundarySeq) *mimePart {
 	}
 	if m.HTML != "" {
 		parts = append(parts, textPart("text/html", m.HTML))
+	}
+	for _, alt := range m.Alternatives {
+		parts = append(parts, alt.part())
+	}
+	if m.ICalEvent != nil {
+		parts = append(parts, m.ICalEvent.part())
 	}
 	switch len(parts) {
 	case 0:
@@ -131,8 +151,20 @@ func (m *Message) buildBody(bs *boundarySeq) *mimePart {
 	}
 }
 
-// textPart builds a quoted-printable-encoded leaf for a text body.
+// textPart builds a quoted-printable-encoded leaf for a text body, appending a
+// utf-8 charset parameter to the media type.
 func textPart(mediaType, content string) *mimePart {
+	return textPartCT(mediaType+"; charset=utf-8", content)
+}
+
+// textPartCT builds a quoted-printable-encoded leaf for a text body using the
+// full content-type value as given, adding a utf-8 charset parameter when the
+// type is textual and none is present.
+func textPartCT(contentType, content string) *mimePart {
+	if !strings.Contains(strings.ToLower(contentType), "charset") &&
+		strings.HasPrefix(strings.ToLower(contentType), "text/") {
+		contentType += "; charset=utf-8"
+	}
 	var qp bytes.Buffer
 	w := quotedprintable.NewWriter(&qp)
 	// Normalise to CRLF-free input; quotedprintable.Writer emits CRLF itself.
@@ -140,7 +172,7 @@ func textPart(mediaType, content string) *mimePart {
 	_ = w.Close()
 	return &mimePart{
 		headers: []Header{
-			{"Content-Type", mediaType + "; charset=utf-8"},
+			{"Content-Type", contentType},
 			{"Content-Transfer-Encoding", "quoted-printable"},
 		},
 		body: qp.Bytes(),
@@ -216,17 +248,29 @@ func (m *Message) writeTopHeaders(buf *bytes.Buffer, root *mimePart) {
 
 	writeHeader(buf, "Date", date.Format(time.RFC1123Z))
 	writeHeader(buf, "From", m.From.String())
-	if len(m.To) > 0 {
-		writeHeader(buf, "To", addressListString(m.To))
+	if v := recipientHeader(m.To, m.ToGroups); v != "" {
+		writeHeader(buf, "To", v)
 	}
-	if len(m.Cc) > 0 {
-		writeHeader(buf, "Cc", addressListString(m.Cc))
+	if v := recipientHeader(m.Cc, m.CcGroups); v != "" {
+		writeHeader(buf, "Cc", v)
 	}
 	if len(m.ReplyTo) > 0 {
 		writeHeader(buf, "Reply-To", addressListString(m.ReplyTo))
 	}
 	writeHeader(buf, "Message-ID", "<"+msgID+">")
+	if m.InReplyTo != "" {
+		writeHeader(buf, "In-Reply-To", "<"+strings.Trim(m.InReplyTo, "<>")+">")
+	}
+	if len(m.References) > 0 {
+		writeHeader(buf, "References", m.referencesValue())
+	}
 	writeHeader(buf, "Subject", encodeHeaderWord(m.Subject))
+	for _, h := range m.Priority.headers() {
+		writeHeader(buf, h.Key, h.Value)
+	}
+	for _, h := range m.ListHeaders {
+		writeHeader(buf, h.Key, h.Value)
+	}
 	for _, h := range m.Headers {
 		writeHeader(buf, h.Key, h.Value)
 	}
