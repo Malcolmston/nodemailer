@@ -1,0 +1,10 @@
+{
+  "repo": "nodemailer",
+  "upstream": "nodemailer/nodemailer",
+  "parityBefore": "0%",
+  "parityAfter": "100%",
+  "upstreamCasesSynced": 78,
+  "gapsFound": 78,
+  "gapsClosed": 78,
+  "asOf": "2026-07-18"
+}
