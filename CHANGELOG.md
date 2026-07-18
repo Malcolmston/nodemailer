@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-18
+
+Further Nodemailer parity. Still standard-library only: no third-party imports,
+no cgo. All output remains deterministic where the underlying feature allows.
+
+### Added
+
+- **Well-known SMTP services** (`Service`, `WellKnownService`,
+  `WellKnownServiceNames`, `NewServiceSMTP`): configure an `SMTPTransport` by
+  provider name (Gmail, Outlook365, Yahoo, SendGrid, SES, ...), mirroring
+  nodemailer's `service` option and well-known/services table.
+- **HTML-to-text generation** (`HTMLToText`, `Message.GenerateTextFromHTML`):
+  derive a `text/plain` alternative from an HTML body, mirroring
+  nodemailer's `generateTextFromHtml`.
+- **AMP and Apple Watch bodies** (`Message.SetAMP`, `Message.SetWatchHTML`):
+  convenience setters for the `amp` and `watchHtml` alternatives.
+- **Stream transport** (`StreamTransport`, `NewStreamTransport`): write encoded
+  messages to any `io.Writer`, mirroring nodemailer's `streamTransport`.
+- **Address utilities** (`Address.Local`, `Address.Domain`, `Address.Equal`,
+  `NormalizeAddress`, `FormatAddressList`): mailbox part accessors and
+  case-correct comparison/normalization.
+- **MIME word helpers** (`EncodeWord`, `DecodeHeaderWord`) and a public
+  Message-ID generator (`GenerateMessageID`), mirroring libmime's
+  `mimeWordEncode` / `mimeWordsDecode`.
+- **DKIM DNS record helpers** (`DKIM.DNSRecordName`, `DKIM.DNSRecord`): emit the
+  `<selector>._domainkey.<domain>` host and the `v=DKIM1; k=rsa; p=...` TXT
+  value to publish for a signing key.
+- **MIME parsing** (`ParsedMessage`, `ParsedAttachment`, `ParseMIME`,
+  `ParsedMessage.Get`): decode raw RFC 5322/MIME bytes back into headers,
+  addresses, bodies and attachments, a lightweight counterpart to mailparser.
+
 ## [0.2.0] - 2026-07-17
 
 Expanded the library toward broader Nodemailer parity. Still standard-library
