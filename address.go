@@ -60,6 +60,11 @@ func ParseAddressList(s string) ([]Address, error) {
 // single "@", empty local or domain parts, whitespace inside the addr-spec and
 // domains without a dot.
 func (a Address) Validate() error {
+	// A display name is written straight into a From/To/Cc header, so a bare
+	// newline in it is header injection (see ErrHeaderInjection).
+	if strings.ContainsAny(a.Name, "\r\n") {
+		return fmt.Errorf("%w: newline in display name %q", ErrInvalidAddress, a.Name)
+	}
 	addr := strings.TrimSpace(a.Address)
 	if addr == "" {
 		return fmt.Errorf("%w: empty address", ErrInvalidAddress)

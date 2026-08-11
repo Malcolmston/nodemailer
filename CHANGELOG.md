@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-11
+
+### Security
+
+- **Email header injection (GHSA-pgqx-3gm6-xx62, CWE-93, medium).** A bare CR or
+  LF in a header-valued field was written into the message verbatim, so a value
+  such as `Subject: "Innocent\r\nBcc: attacker@example.com"` ended the `Subject`
+  field early and appended a real `Bcc` header — and, after a second CRLF, a
+  forged message body. Any application passing user-controlled text (a ticket
+  title, a display name, an order reference) to `SetSubject` or `AddHeader`
+  could have arbitrary headers written on its behalf, which is enough to
+  redirect replies or exfiltrate the body to an added recipient.
+
+  `Message.Build` now validates every field that reaches a header value —
+  `Subject`, custom `Headers` (name and value), `List-*` headers, display names
+  and addr-specs of `From`/`To`/`Cc`/`Bcc`/`Reply-To` and of address groups,
+  `Message-ID`, `In-Reply-To`, `References`, the MIME boundary, attachment
+  filenames/content types/content IDs, alternative content types and the
+  calendar method — and fails with the new sentinel `ErrHeaderInjection` when
+  one carries a CR or LF. `Address.Validate` likewise rejects a newline in a
+  display name.
+
+### Added
+
+- `ErrHeaderInjection`, the sentinel returned by `Build` for a newline-bearing
+  header value.
+- `SanitizeHeaderValue`, which folds each run of CR/LF into a single space. It
+  is the migration path for callers that must accept arbitrary untrusted text:
+  sanitise first, then set the header. Non-ASCII header text continues to be
+  carried as an RFC 2047 encoded-word (see `EncodeWord`), which is the only
+  correct way to do so — raw bytes never were.
+
+### Changed (breaking)
+
+- `Message.Build` now returns an error instead of a message when a header value
+  contains a CR or LF. Code that previously "worked" by relying on that
+  behaviour — deliberately or not — now fails loudly. This is intentional: RFC
+  5322 forbids bare CR/LF in a field body, so no legitimate header value is
+  affected. Wrap the value in `SanitizeHeaderValue` to keep building.
+
 ## [0.3.0] - 2026-07-18
 
 Further Nodemailer parity. Still standard-library only: no third-party imports,

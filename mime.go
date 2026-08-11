@@ -36,6 +36,11 @@ func (m *Message) Build() ([]byte, error) {
 	if err := m.From.Validate(); err != nil {
 		return nil, fmt.Errorf("nodemailer: From: %w", err)
 	}
+	// Reject header values carrying a bare CR or LF before anything is
+	// encoded; see ErrHeaderInjection.
+	if err := m.validateHeaders(); err != nil {
+		return nil, err
+	}
 	if len(m.To) == 0 && len(m.Cc) == 0 && len(m.Bcc) == 0 &&
 		len(m.ToGroups) == 0 && len(m.CcGroups) == 0 {
 		return nil, errors.New("nodemailer: message has no recipients")
